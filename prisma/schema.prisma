@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  relationMode = "prisma"
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model User {
+  id                   String        @id @default(cuid())
+  name                 String?
+  email                String?       @unique
+  password             String?
+  role                 String        @default("USER") // <-- ADD THIS ("USER" or "ADMIN")
+  isSuspended          Boolean       @default(false) //
+  accountNo            Int           @unique @default(autoincrement())
+  emailVerified        DateTime?
+  image                String?
+  accounts             Account[]
+  sentTransactions     Transaction[] @relation("SentTransactions")
+  receivedTransactions Transaction[] @relation("ReceivedTransactions")
+  beneficiaries        Beneficiary[]
+}
+
+
+model Beneficiary {
+  id          String   @id @default(cuid())
+  accountName String
+  accountNo   String
+  systemName  String
+  routingNo   String
+  createdAt   DateTime @default(now())
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountNo, routingNo])
+  @@index([userId])
+}
+
+
+model Transaction {
+  id                   String   @id @default(cuid())
+  amount               Int
+  description          String
+  createdAt            DateTime @default(now())
+  authCode             String?
+
+  // External Wire Recipient Details
+  recipientName        String?
+  recipientAccountNo   String?
+  recipientSystemName  String?
+  routingNumber        String?
+
+  senderId             String?
+  sender               User?    @relation("SentTransactions", fields: [senderId], references: [id])
+
+  // Make receiverId optional since external recipients are outside this system
+  receiverId           String?
+  receiver             User?    @relation("ReceivedTransactions", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+}
+
