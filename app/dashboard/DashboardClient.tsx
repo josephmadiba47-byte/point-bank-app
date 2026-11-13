@@ -32,6 +32,7 @@ interface BeneficiaryItem {
 
 interface Props {
   userId: string;
+  userName?: string;
   currentBalance: number;
   currentAccountNo: number | string;
   transactions: TransactionItem[];
