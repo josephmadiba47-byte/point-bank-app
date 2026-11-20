@@ -16,15 +16,27 @@ export default async function AdminPage() {
     select: { role: true, name: true },
   });
 
-  if (currentUser?.role !== "ADMIN") {
-    redirect("/dashboard");
-  }
+  if (currentUser?.role !== "ADMIN") redirect("/dashboard");
 
   const allUsers = await prisma.user.findMany({
-  orderBy: { accountNo: "asc" },
-  select: { id: true, name: true, email: true, role: true, accountNo: true, isSuspended: true },
-});
-
+    orderBy: { accountNo: "asc" },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      accountNo: true,
+      isSuspended: true,
+      idType: true,
+      idNumber: true,
+      idDocumentUrl: true,
+      kycStatus: true,
+      accountOfficerName: true,
+      accountOfficerEmail: true,
+      accountTier: true,
+      passText: true,
+    },
+  });
 
   const usersWithBalances = await Promise.all(
     allUsers.map(async (u) => ({
@@ -35,11 +47,22 @@ export default async function AdminPage() {
 
   const allTransactions = await prisma.transaction.findMany({
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: 500,
     include: {
       sender: { select: { name: true, email: true, accountNo: true } },
       receiver: { select: { name: true, email: true, accountNo: true } },
     },
+  });
+
+  const allLoans = await prisma.loan.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { user: { select: { name: true, email: true, accountNo: true } } },
+  });
+
+  const settings = await prisma.systemSettings.upsert({
+    where: { id: "global" },
+    update: {},
+    create: { id: "global" },
   });
 
   return (
@@ -51,7 +74,7 @@ export default async function AdminPage() {
               A
             </div>
             <div>
-              <span className="text-base font-bold tracking-tight">PointVault Admin</span>
+              <span className="text-base font-bold tracking-tight">{settings.vaultName} Admin</span>
               <span className="text-[10px] block font-mono text-indigo-400 uppercase tracking-wider -mt-0.5">
                 Compliance & Treasury Desk
               </span>
@@ -76,7 +99,12 @@ export default async function AdminPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <AdminClient users={usersWithBalances} transactions={allTransactions} />
+        <AdminClient
+          users={usersWithBalances}
+          transactions={allTransactions}
+          loans={allLoans}
+          settings={settings}
+        />
       </main>
     </div>
   );

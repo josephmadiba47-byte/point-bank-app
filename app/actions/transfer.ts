@@ -48,7 +48,7 @@ export async function requestTransfer(
   if (isNaN(amount) || amount <= 0) return { error: "Amount must be greater than zero." };
 
   const balance = await getUserBalance(senderId);
-  if (balance < amount) return { error: "Insufficient point credit balance." };
+  if (balance < amount) return { error: "Insufficient balance." };
 
   const pinCode = Math.floor(100000 + Math.random() * 900000).toString();
 

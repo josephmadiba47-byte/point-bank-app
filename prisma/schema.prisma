@@ -31,8 +31,19 @@ model User {
   name                 String?
   email                String?       @unique
   password             String?
-  role                 String        @default("USER") // <-- ADD THIS ("USER" or "ADMIN")
-  isSuspended          Boolean       @default(false) //
+  phone                String?
+  address              String?
+  idType               String?       // e.g. "PASSPORT", "DRIVERS_LICENSE"
+  idNumber             String?
+  idDocumentUrl        String?       // Public Supabase Storage URL
+  kycStatus            String        @default("UNVERIFIED") // UNVERIFIED, PENDING, VERIFIED, REJECTED
+  accountTier          String        @default("STANDARD") // STANDARD, SILVER, GOLD, PLATINUM
+  accountOfficerName   String?       // <-- ADD THIS
+  accountOfficerEmail  String?
+  passText             String?
+  twoFactorEnabled     Boolean       @default(false) 
+  role                 String        @default("USER")
+  isSuspended          Boolean       @default(false)
   accountNo            Int           @unique @default(autoincrement())
   emailVerified        DateTime?
   image                String?
@@ -40,6 +51,54 @@ model User {
   sentTransactions     Transaction[] @relation("SentTransactions")
   receivedTransactions Transaction[] @relation("ReceivedTransactions")
   beneficiaries        Beneficiary[]
+  loans                Loan[]
+  knownDevices         KnownDevice[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+model TwoFactorToken {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+model KnownDevice {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fingerprint String   // Hash of User-Agent + IP prefix
+  deviceLabel String   // e.g. "Chrome on Windows"
+  ipAddress   String
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([userId, fingerprint])
+  @@index([userId])
+}
+model Loan {
+  id           String   @id @default(cuid())
+  amount       Int
+  totalPayable Int
+  termMonths   Int
+  interestRate Float
+  purpose      String
+  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED, PAID
+  createdAt    DateTime @default(now())
+
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 
@@ -83,3 +142,13 @@ model Transaction {
   @@index([receiverId])
 }
 
+model SystemSettings {
+  id             String   @id @default("global")
+  vaultName      String   @default("PointVault")
+  supportEmail   String   @default("compliance@pointvault.io")
+  supportPhone   String   @default("+234 800 000 0000")
+  officeAddress  String   @default("12 Marina Road, Lagos, Nigeria")
+  operatingHours String   @default("Mon – Fri, 8:00 AM – 6:00 PM WAT")
+  noticeBanner   String?  // Optional global announcement banner for users
+  updatedAt      DateTime @updatedAt
+}

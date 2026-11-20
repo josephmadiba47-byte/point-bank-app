@@ -3,31 +3,42 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getUserBalance } from "@/lib/ledger";
 import DashboardClient from "./DashboardClient";
-import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 
 export const instant = false;
-const ITEMS_PER_PAGE = 5;
 
-interface Props {
-  searchParams: Promise<{ page?: string; search?: string }>;
-}
-
-export default async function DashboardPage({ searchParams }: Props) {
-  const currency = process.env.NEXT_PUBLIC_CURRENCY_SYMBOL || '$';
+export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
   const userId = session.user.id!;
-  const userName = session.user.name!;
   const currentBalance = await getUserBalance(userId);
 
-  // Fetch the user's 8-digit numeric routing account number
   const dbUser = await prisma.user.findUnique({
     where: { id: userId },
-    select: { accountNo: true, name: true, email: true, role: true },
+    select: {
+      accountNo: true,
+      name: true,
+      email: true,
+      role: true,
+      phone: true,
+      address: true,
+      idType: true,
+      idNumber: true,
+      idDocumentUrl: true,
+      kycStatus: true,
+      accountOfficerName: true,
+      accountOfficerEmail: true,
+      accountTier: true,
+      twoFactorEnabled: true,
+    },
   });
- 
+
+  const loans = await prisma.loan.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+
   // Check if the user currently has an unverified outgoing transfer
   const pendingTransfer = await prisma.transaction.findFirst({
     where: { senderId: userId, authCode: { not: null } },
@@ -38,45 +49,24 @@ export default async function DashboardPage({ searchParams }: Props) {
     orderBy: { createdAt: "desc" },
   });
 
-  const resolvedParams = await searchParams;
-  const currentPage = Math.max(1, parseInt(resolvedParams.page || "1", 10));
-  const searchQuery = resolvedParams.search || "";
-
-  // Show completed transactions (sent or received) PLUS the user's own pending outgoing transfers
-  const userLedgerFilter: any = {
-    OR: [
-      { senderId: userId },
-      { receiverId: userId, authCode: null },
-    ],
-  };
-
-  if (searchQuery) {
-    const searchAsNumber = parseInt(searchQuery, 10);
-    userLedgerFilter.AND = [
-      {
-        OR: [
-          { description: { contains: searchQuery, mode: "insensitive" } },
-          { recipientName: { contains: searchQuery, mode: "insensitive" } },
-          { recipientAccountNo: { contains: searchQuery, mode: "insensitive" } },
-          { recipientSystemName: { contains: searchQuery, mode: "insensitive" } },
-          { routingNumber: { contains: searchQuery, mode: "insensitive" } },
-          ...(!isNaN(searchAsNumber) ? [{ sender: { accountNo: searchAsNumber } }] : []),
-        ],
-      },
-    ];
-  }
-
-
-  const totalTransactions = await prisma.transaction.count({
-    where: userLedgerFilter,
+  const settings = await prisma.systemSettings.upsert({
+    where: { id: "global" },
+    update: {},
+    create: { id: "global" },
   });
-  const totalPages = Math.ceil(totalTransactions / ITEMS_PER_PAGE) || 1;
 
+  const vaultName = settings.vaultName || process.env.NEXT_PUBLIC_SITE_NAME || "PointVault";
+
+  // Fetch recent completed transactions (sent or received) PLUS the user's own pending outgoing transfers
   const transactions = await prisma.transaction.findMany({
-    where: userLedgerFilter,
+    where: {
+      OR: [
+        { senderId: userId },
+        { receiverId: userId, authCode: null },
+      ],
+    },
     orderBy: { createdAt: "desc" },
-    take: ITEMS_PER_PAGE,
-    skip: (currentPage - 1) * ITEMS_PER_PAGE,
+    take: 200,
     include: {
       sender: { select: { accountNo: true } },
       receiver: { select: { accountNo: true } },
@@ -90,11 +80,11 @@ export default async function DashboardPage({ searchParams }: Props) {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white font-bold text-lg shadow-sm shadow-indigo-200">
-              P
+              {vaultName.charAt(0).toUpperCase()}
             </div>
             <div>
               <span className="text-base font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                PointVault
+                {vaultName}
               </span>
               <span className="text-[10px] block font-mono text-slate-400 font-medium tracking-wider uppercase -mt-0.5">
                 Instant Wire Transaction
@@ -103,7 +93,6 @@ export default async function DashboardPage({ searchParams }: Props) {
           </div>
 
           <div className="flex items-center space-x-3">
-            
             {dbUser?.role === "ADMIN" && (
               <Link
                 href="/admin"
@@ -123,19 +112,42 @@ export default async function DashboardPage({ searchParams }: Props) {
       </header>
 
       {/* Main Dashboard Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {settings.noticeBanner && (
+          <div className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-3 rounded-2xl shadow-sm flex items-center justify-between gap-3 print:hidden">
+            <div className="flex items-center space-x-3">
+              <span className="text-base shrink-0">📢</span>
+              <p className="text-xs sm:text-sm font-medium leading-snug">
+                {settings.noticeBanner}
+              </p>
+            </div>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-white/15 px-2.5 py-1 rounded-full shrink-0 hidden sm:inline-block">
+              Notice
+            </span>
+          </div>
+        )}
+
         <DashboardClient
           userId={userId}
-          userName={userName}
+          userName={dbUser?.name || ""}
+          userEmail={dbUser?.email || ""}
+          userPhone={dbUser?.phone || ""}
+          userAddress={dbUser?.address || ""}
           currentBalance={currentBalance}
           currentAccountNo={dbUser?.accountNo || "Pending"}
           transactions={transactions}
           beneficiaries={beneficiaries}
+          loans={loans}
           hasPending={!!pendingTransfer}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalTransactions={totalTransactions}
-          searchQuery={searchQuery}
+          idType={dbUser?.idType || ""}
+          idNumber={dbUser?.idNumber || ""}
+          idDocumentUrl={dbUser?.idDocumentUrl || ""}
+          kycStatus={(dbUser?.kycStatus || "UNVERIFIED") as "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED"}
+          accountTier={dbUser?.accountTier || "STANDARD"}
+          settings={settings}
+          accountOfficerEmail={dbUser?.accountOfficerEmail || ""}
+          accountOfficerName={dbUser?.accountOfficerName || ""}
+          twoFactorEnabled={dbUser?.twoFactorEnabled ?? true}
         />
       </main>
     </div>

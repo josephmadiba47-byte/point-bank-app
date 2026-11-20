@@ -8,17 +8,19 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
-      const isViewingDashboard = nextUrl.pathname.startsWith("/dashboard");
+      const isProtectedRoute =
+        nextUrl.pathname.startsWith("/dashboard") ||
+        nextUrl.pathname.startsWith("/admin");
 
-      if (isViewingDashboard) {
+      if (isProtectedRoute) {
         if (isLoggedIn) return true;
         return false; // Blocks access and triggers redirect to /login
       } else if (isLoggedIn && nextUrl.pathname === "/login") {
-        // If they are already logged in and try to visit the login page, 
-        // instantly fast-forward them straight to the dashboard!
+        // Fast-forward logged-in users away from /login
         return Response.redirect(new URL("/dashboard", nextUrl));
       }
-      
+
+      // Allows /reset-password and any other public routes through cleanly
       return true;
     },
   },
